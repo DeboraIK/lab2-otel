@@ -9,6 +9,8 @@ services:
     depends_on:
       - servico-b
       - otel-collector
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
   servico-b:
     build:
@@ -17,6 +19,8 @@ services:
       - "8080:8080"
     depends_on:
       - otel-collector
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
   zipkin:
     image: openzipkin/zipkin
@@ -24,10 +28,12 @@ services:
       - "9411:9411"
 
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector-contrib:latest
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
       - "4318:4318"
       - "4317:4317"
+    depends_on:
+      - zipkin

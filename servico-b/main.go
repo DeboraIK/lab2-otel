@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -61,6 +62,10 @@ func WeatherHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, span := tracer.Start(r.Context(), "Processar tempo por CEP")
 	defer span.End()
 
+	// Log para debug
+	spanCtx := trace.SpanContextFromContext(ctx)
+	log.Printf("TraceID: %s, SpanID: %s", spanCtx.TraceID().String(), spanCtx.SpanID().String())
+
 	cepParam := r.URL.Query().Get("cep")
 	if !validateCEP(cepParam) {
 		http.Error(w, "invalid zipcode", http.StatusUnprocessableEntity)
@@ -69,12 +74,14 @@ func WeatherHandler(w http.ResponseWriter, r *http.Request) {
 
 	cepData, err := BuscaCEP(ctx, cepParam)
 	if err != nil || cepData.Localidade == "" {
+		log.Printf("CEP não encontrado: %v", err)
 		http.Error(w, "can not find zipcode", http.StatusNotFound)
 		return
 	}
 
 	tempC, err := fetchWeather(ctx, cepData.Localidade)
 	if err != nil {
+		log.Printf("Erro ao buscar temperatura: %v", err)
 		http.Error(w, "erro ao buscar temperatura", http.StatusInternalServerError)
 		return
 	}
@@ -185,9 +192,8 @@ func convertTemps(celsius float64, cidade string) TempResp {
 
 func initTracer(ctx context.Context) *sdktrace.TracerProvider {
 	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint("otel-collector:4318"),
+		otlptracehttp.WithEndpoint("http://otel-collector:4318"),
 		otlptracehttp.WithURLPath("/v1/traces"),
-
 		otlptracehttp.WithInsecure(),
 	)
 	if err != nil {
@@ -197,6 +203,7 @@ func initTracer(ctx context.Context) *sdktrace.TracerProvider {
 	resource := resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceName("servico-b"),
+		semconv.ServiceVersion("1.0.0"),
 	)
 
 	tp := sdktrace.NewTracerProvider(
@@ -205,5 +212,11 @@ func initTracer(ctx context.Context) *sdktrace.TracerProvider {
 	)
 
 	otel.SetTracerProvider(tp)
+
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
 	return tp
 }

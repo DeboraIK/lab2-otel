@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  servico-a:
+    build:
+      context: ./servico-a
+    ports:
+      - "8081:8081"
+    depends_on:
+      - servico-b
+      - otel-collector
+
+  servico-b:
+    build:
+      context: ./servico-b
+    ports:
+      - "8080:8080"
+    depends_on:
+      - otel-collector
+
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4318:4318"
+      - "4317:4317"
